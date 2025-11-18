@@ -6,6 +6,7 @@ use crate::{
     sync::{UPIntrFreeCell, UPIntrRefMut},
 };
 use alloc::sync::{Arc, Weak};
+use core::cmp::Ordering;
 
 pub struct TaskControlBlock {
     // immutable
@@ -13,6 +14,23 @@ pub struct TaskControlBlock {
     pub kstack: KernelStack,
     // mutable
     pub inner: UPIntrFreeCell<TaskControlBlockInner>,
+}
+
+impl PartialEq for TaskControlBlock {
+    fn eq(&self, other: &Self) -> bool {
+        self.inner.exclusive_access().priority == other.inner.exclusive_access().priority
+    }
+}
+impl Eq for TaskControlBlock {}
+impl PartialOrd for TaskControlBlock {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+impl Ord for TaskControlBlock {
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.inner.exclusive_access().priority.cmp(&other.inner.exclusive_access().priority)
+    }
 }
 
 impl TaskControlBlock {
@@ -32,6 +50,7 @@ pub struct TaskControlBlockInner {
     pub trap_cx_ppn: PhysPageNum,
     pub task_cx: TaskContext,
     pub task_status: TaskStatus,
+    pub priority: u8,
     pub exit_code: Option<i32>,
 }
 
@@ -65,6 +84,7 @@ impl TaskControlBlock {
                     trap_cx_ppn,
                     task_cx: TaskContext::goto_trap_return(kstack_top),
                     task_status: TaskStatus::Ready,
+                    priority: 16, // set default priority
                     exit_code: None,
                 })
             },

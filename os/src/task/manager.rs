@@ -1,25 +1,25 @@
 use super::{ProcessControlBlock, TaskControlBlock, TaskStatus};
 use crate::sync::UPIntrFreeCell;
-use alloc::collections::{BTreeMap, VecDeque};
+use alloc::collections::{BTreeMap, BinaryHeap};
 use alloc::sync::Arc;
 use lazy_static::*;
 
 pub struct TaskManager {
-    ready_queue: VecDeque<Arc<TaskControlBlock>>,
+    ready_queue: BinaryHeap<Arc<TaskControlBlock>>,
 }
 
-/// A simple FIFO scheduler.
+/// A priority-based scheduler.
 impl TaskManager {
     pub fn new() -> Self {
         Self {
-            ready_queue: VecDeque::new(),
+            ready_queue: BinaryHeap::new(),
         }
     }
     pub fn add(&mut self, task: Arc<TaskControlBlock>) {
-        self.ready_queue.push_back(task);
+        self.ready_queue.push(task);
     }
     pub fn fetch(&mut self) -> Option<Arc<TaskControlBlock>> {
-        self.ready_queue.pop_front()
+        self.ready_queue.pop()
     }
 }
 
