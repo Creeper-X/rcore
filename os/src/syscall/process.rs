@@ -2,12 +2,21 @@ use crate::fs::{OpenFlags, open_file};
 use crate::mm::{translated_ref, translated_refmut, translated_str};
 use crate::task::{
     SignalFlags, current_process, current_task, current_user_token, exit_current_and_run_next,
-    pid2process, suspend_current_and_run_next,
+    pid2process, suspend_current_and_run_next, PID2PCB,
 };
 use crate::timer::get_time_ms;
 use alloc::string::String;
 use alloc::sync::Arc;
 use alloc::vec::Vec;
+
+// Process information structure
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+pub struct ProcessInfo {
+    pub pid: usize,
+    pub ppid: usize,
+    pub status: u8, // 0: ready, 1: running, 2: zombie
+}
 
 pub fn sys_exit(exit_code: i32) -> ! {
     exit_current_and_run_next(exit_code);
@@ -114,4 +123,58 @@ pub fn sys_kill(pid: usize, signal: u32) -> isize {
     } else {
         -1
     }
+}
+
+pub fn sys_get_process_info(buf: *mut u8, max_count: usize) -> isize {
+    let token = current_user_token();
+    let pid2pcb = PID2PCB.exclusive_access();
+    
+    let mut count = 0;
+    let process_info_size = core::mem::size_of::<ProcessInfo>();
+    
+    for (&pid, process) in pid2pcb.iter() {
+        if count >= max_count {
+            break;
+        }
+        
+        let process_inner = process.inner_exclusive_access();
+        
+        // Get parent pid
+        let ppid = if let Some(parent) = &process_inner.parent {
+            if let Some(parent_arc) = parent.upgrade() {
+                parent_arc.getpid()
+            } else {
+                0
+            }
+        } else {
+            0
+        };
+        
+        // Determine status
+        let status = if process_inner.is_zombie {
+            2 // zombie
+        } else {
+            0 // ready or running
+        };
+        
+        let info = ProcessInfo {
+            pid,
+            ppid,
+            status,
+        };
+        
+        drop(process_inner);
+        
+        // Copy to user space
+        let dst = unsafe { buf.add(count * process_info_size) };
+        let src = &info as *const ProcessInfo as *const u8;
+        
+        for i in 0..process_info_size {
+            *translated_refmut(token, unsafe { dst.add(i) }) = unsafe { *src.add(i) };
+        }
+        
+        count += 1;
+    }
+    
+    count as isize
 }

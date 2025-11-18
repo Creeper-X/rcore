@@ -1,5 +1,13 @@
 use super::*;
 
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+pub struct ProcessInfo {
+    pub pid: usize,
+    pub ppid: usize,
+    pub status: u8, // 0: ready, 1: running, 2: zombie
+}
+
 pub fn exit(exit_code: i32) -> ! {
     sys_exit(exit_code);
 }
@@ -12,6 +20,11 @@ pub fn get_time() -> isize {
 pub fn getpid() -> isize {
     sys_getpid()
 }
+
+pub fn get_process_info(buf: &mut [ProcessInfo]) -> isize {
+    sys_get_process_info(buf.as_mut_ptr() as *mut u8, buf.len())
+}
+
 pub fn fork() -> isize {
     sys_fork()
 }
