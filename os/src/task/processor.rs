@@ -43,6 +43,8 @@ pub fn run_tasks() {
             // access coming task TCB exclusively
             let next_task_cx_ptr = task.inner.exclusive_session(|task_inner| {
                 task_inner.task_status = TaskStatus::Running;
+                // CFS: 记录开始运行时间
+                task_inner.last_scheduled = crate::timer::get_time_ms() * 1000; // 微秒
                 &task_inner.task_cx as *const TaskContext
             });
             processor.current = Some(task);
@@ -52,7 +54,12 @@ pub fn run_tasks() {
                 __switch(idle_task_cx_ptr, next_task_cx_ptr);
             }
         } else {
-            println!("no tasks available in run_tasks");
+            println!("[WARN] no tasks available in run_tasks, waiting...");
+            drop(processor);
+            // 等待一下再重试，避免 CPU 占用 100%
+            unsafe {
+                core::arch::asm!("wfi"); // Wait for interrupt
+            }
         }
     }
 }

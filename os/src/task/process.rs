@@ -108,6 +108,12 @@ impl ProcessControlBlock {
             ustack_base,
             true,
         ));
+        // CFS: 设置新任务的初始 vruntime 为当前最小值
+        {
+            let mut task_inner = task.inner_exclusive_access();
+            task_inner.vruntime = super::get_min_vruntime();
+            drop(task_inner);
+        }
         // prepare trap_cx of main thread
         let task_inner = task.inner_exclusive_access();
         let trap_cx = task_inner.get_trap_cx();
@@ -241,6 +247,14 @@ impl ProcessControlBlock {
         let mut child_inner = child.inner_exclusive_access();
         child_inner.tasks.push(Some(Arc::clone(&task)));
         drop(child_inner);
+        // CFS: 子进程继承父进程的 vruntime
+        {
+            let parent_task = parent.get_task(0);
+            let parent_vruntime = parent_task.inner_exclusive_access().vruntime;
+            let mut task_inner = task.inner_exclusive_access();
+            task_inner.vruntime = parent_vruntime;
+            drop(task_inner);
+        }
         // modify kstack_top in trap_cx of this thread
         let task_inner = task.inner_exclusive_access();
         let trap_cx = task_inner.get_trap_cx();

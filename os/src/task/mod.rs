@@ -19,7 +19,7 @@ use switch::__switch;
 
 pub use context::TaskContext;
 pub use id::{IDLE_PID, KernelStack, PidHandle, kstack_alloc, pid_alloc};
-pub use manager::{add_task, pid2process, remove_from_pid2process, wakeup_task, PID2PCB};
+pub use manager::{add_task, pid2process, remove_from_pid2process, wakeup_task, PID2PCB, get_min_vruntime};
 pub use processor::{
     current_kstack_top, current_process, current_task, current_trap_cx, current_trap_cx_user_va,
     current_user_token, run_tasks, schedule, take_current_task,
@@ -34,6 +34,14 @@ pub fn suspend_current_and_run_next() {
     // ---- access current TCB exclusively
     let mut task_inner = task.inner_exclusive_access();
     let task_cx_ptr = &mut task_inner.task_cx as *mut TaskContext;
+    
+    // CFS: 更新 vruntime
+    let current_time = crate::timer::get_time_ms() * 1000; // 转换为微秒
+    if task_inner.last_scheduled > 0 {
+        let delta = current_time.saturating_sub(task_inner.last_scheduled);
+        task_inner.update_vruntime(delta);
+    }
+    
     // Change status to Ready
     task_inner.task_status = TaskStatus::Ready;
     drop(task_inner);
